@@ -9,7 +9,13 @@ import { IoIosAddCircleOutline } from "react-icons/io";
 import { HiCamera } from "react-icons/hi";
 import { AiOutlineClose } from "react-icons/ai";
 import { app } from "../firebase";
-import {getDownloadURL,getStorage,ref,uploadBytesResumable} from "firebase/storage";
+import {
+  getDownloadURL,
+  getStorage,
+  ref,
+  uploadBytesResumable,
+} from "firebase/storage";
+import {addDoc,collection,getFirestore,serverTimestamp} from 'firebase/firestore';
 
 export default function Header() {
   const [isOpen, setIsOpen] = useState(false);
@@ -17,7 +23,10 @@ export default function Header() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [imageFileUrl, setImageFileUrl] = useState(null);
   const filePickerRef = useRef(null);
-  const [imageFileUploading,setImageFileUploading] = useState(false);
+  const [imageFileUploading, setImageFileUploading] = useState(false);
+  const [postUploading,setPostUploading] = useState(false);
+  const [caption,setCaption] = useState('');
+  const db = getFirestore(app);
 
   function addImageToPost(e) {
     const file = e.target.files[0];
@@ -28,41 +37,54 @@ export default function Header() {
     }
   }
 
-  useEffect(()=>{
-    if(selectedFile){
+  useEffect(() => {
+    if (selectedFile) {
       uploadImageToStorage();
     }
-  },[selectedFile]);
+  }, [selectedFile]);
 
-  const uploadImageToStorage = async()=>{
+  const uploadImageToStorage = async () => {
     setImageFileUploading(true);
     const storage = getStorage(app);
-    const fileName = new Date().getTime()+'-'+selectedFile.name;
-    const storageRef = ref(storage,fileName);
-    const uploadTask = uploadBytesResumable(storageRef,selectedFile);
+    const fileName = new Date().getTime() + "-" + selectedFile.name;
+    const storageRef = ref(storage, fileName);
+    const uploadTask = uploadBytesResumable(storageRef, selectedFile);
     uploadTask.on(
-      'state_changed',
-      (snapshot)=>{
-        const progress = (snapshot.bytesTransferred/snapshot.totalBytes)*100;
-        console.log('upload is '+progress+"% done");
+      "state_changed",
+      (snapshot) => {
+        const progress =
+          (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        console.log("upload is " + progress + "% done");
       },
-      (error)=>{
+      (error) => {
         console.error(error);
         setImageFileUploading(false);
         setImageFileUrl(null);
         setSelectedFile(null);
       },
-      ()=>{
-        getDownloadURL(uploadTask.snapshot.ref).then((downloadURL)=>{
+      () => {
+        getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
           setImageFileUrl(downloadURL);
           setImageFileUploading(false);
-        })
+        });
       }
-    )
+    );
+  };
 
-
-
+  async function handleSubmit(){
+      setPostUploading(true);
+      const docRef = await addDoc(collection(db,'posts'),{
+        username:session.user.username,
+        caption,
+        profileImg:session.user.image,
+        image:imageFileUrl,
+        timeStamp:serverTimestamp(),
+      });
+      setPostUploading(false);
+      setIsOpen(false);
   }
+
+
 
   return (
     <div className="shadow-sm border-b sticky top-0 bg-black z-index-30 p-2">
@@ -126,11 +148,11 @@ export default function Header() {
           <div className="flex flex-col items-center justify-center">
             {selectedFile ? (
               <img
-                onClick={()=>setSelectedFile(null)}
+                onClick={() => setSelectedFile(null)}
                 src={imageFileUrl}
                 alt="selectedfile"
                 className={`w-full max-h-[250px] object-cover  rounded-md cursor-pointer
-                ${imageFileUploading ? 'animate-pulse' : ' '}`}
+                ${imageFileUploading ? "animate-pulse" : " "}`}
               />
             ) : (
               <HiCamera
@@ -151,12 +173,15 @@ export default function Header() {
             type="text"
             maxLength="156"
             placeholder="Please enter your caption..."
+            onChange={(e)=>setCaption(e.target.value)}
             className="m-4 border-none text-center w-full focus:ring-0 outline-none"
           />
           <button
-            disabled
+             //caption.trim() // dont consider space at the beginning
+            disabled = {!selectedFile || !caption.trim()===''|| postUploading || imageFileUploading}
             className="w-full bg-red-600 text-white p-2 shadow-md rounded-lg hover:brightness-105 
           disabled:bg-gray-200 disabled:cursor-not-allowed disabled:hover:brightness-100"
+          onClick={()=>handleSubmit()}
           >
             Upload Post
           </button>
